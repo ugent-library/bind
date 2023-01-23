@@ -12,6 +12,8 @@ import (
 type Flag int
 
 const (
+	// When the Vacuum flag is set, url.Values is cleaned before trying to bind the values.
+	// Strings are trimmed, empty strings and zero length slices are deleted.
 	Vacuum Flag = iota
 )
 
