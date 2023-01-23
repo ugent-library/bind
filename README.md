@@ -9,7 +9,7 @@ It uses [go-playground/form](https://github.com/go-playground/form) under the ho
 ## Install
 
 ```sh
-go get -u ugent-library/bind
+go get -u github.com/ugent-library/bind
 ```
 ## Examples
 
