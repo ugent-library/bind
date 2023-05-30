@@ -39,7 +39,7 @@ func Request(r *http.Request, v any, flags ...Flag) error {
 func Query(r *http.Request, v any, flags ...Flag) error {
 	vals := r.URL.Query()
 	if hasFlag(flags, Vacuum) {
-		vacuum(vals)
+		vals = vacuum(vals)
 	}
 	return queryDecoder.Decode(v, vals)
 }
@@ -48,26 +48,26 @@ func Form(r *http.Request, v any, flags ...Flag) error {
 	r.ParseForm()
 	vals := r.Form
 	if hasFlag(flags, Vacuum) {
-		vacuum(vals)
+		vals = vacuum(vals)
 	}
 	return formDecoder.Decode(v, vals)
 }
 
-func vacuum(values url.Values) {
+func vacuum(values url.Values) url.Values {
+	newValues := make(url.Values)
 	for key, vals := range values {
-		var tmp []string
+		var newVals []string
 		for _, val := range vals {
 			val = strings.TrimSpace(val)
 			if val != "" {
-				tmp = append(tmp, val)
+				newVals = append(newVals, val)
 			}
 		}
-		if len(tmp) > 0 {
-			values[key] = tmp
-		} else {
-			delete(values, key)
+		if len(newVals) > 0 {
+			newValues[key] = newVals
 		}
 	}
+	return newValues
 }
 
 func hasFlag(flags []Flag, flag Flag) bool {
