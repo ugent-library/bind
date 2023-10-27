@@ -18,8 +18,9 @@ const (
 )
 
 var (
-	queryDecoder = form.NewDecoder()
-	formDecoder  = form.NewDecoder()
+	queryDecoder  = form.NewDecoder()
+	formDecoder   = form.NewDecoder()
+	headerDecoder = form.NewDecoder()
 )
 
 func init() {
@@ -27,9 +28,14 @@ func init() {
 	queryDecoder.SetMode(form.ModeExplicit)
 	formDecoder.SetTagName("form")
 	formDecoder.SetMode(form.ModeExplicit)
+	headerDecoder.SetTagName("header")
+	headerDecoder.SetMode(form.ModeExplicit)
 }
 
 func Request(r *http.Request, v any, flags ...Flag) error {
+	if err := Header(r, v, flags...); err != nil {
+		return err
+	}
 	if r.Method == http.MethodGet || r.Method == http.MethodDelete || r.Method == http.MethodHead {
 		return Query(r, v, flags...)
 	}
@@ -51,6 +57,14 @@ func Form(r *http.Request, v any, flags ...Flag) error {
 		vals = vacuum(vals)
 	}
 	return formDecoder.Decode(v, vals)
+}
+
+func Header(r *http.Request, v any, flags ...Flag) error {
+	vals := url.Values(r.Header)
+	if hasFlag(flags, Vacuum) {
+		vals = vacuum(vals)
+	}
+	return headerDecoder.Decode(v, vals)
 }
 
 func vacuum(values url.Values) url.Values {
