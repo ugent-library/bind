@@ -2,15 +2,13 @@ package bind
 
 import (
 	"net/http"
+	"net/url"
 	"testing"
 )
 
 func TestPath(t *testing.T) {
-	PathValueFunc = func(r *http.Request, k string) string {
-		if k == "id" {
-			return "123"
-		}
-		return ""
+	PathFunc = func(r *http.Request) url.Values {
+		return url.Values{"id": []string{"123"}}
 	}
 
 	r, _ := http.NewRequest(http.MethodGet, "/", nil)
