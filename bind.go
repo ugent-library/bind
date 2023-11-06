@@ -27,6 +27,10 @@ var (
 	formDecoder   = form.NewDecoder()
 	headerDecoder = form.NewDecoder()
 
+	queryEncoder  = form.NewEncoder()
+	formEncoder   = form.NewEncoder()
+	headerEncoder = form.NewEncoder()
+
 	PathValueFunc func(*http.Request, string) string
 )
 
@@ -37,27 +41,67 @@ func init() {
 	formDecoder.SetMode(form.ModeExplicit)
 	headerDecoder.SetTagName("header")
 	headerDecoder.SetMode(form.ModeExplicit)
+
+	queryEncoder.SetTagName("query")
+	queryEncoder.SetMode(form.ModeExplicit)
+	formEncoder.SetTagName("form")
+	formEncoder.SetMode(form.ModeExplicit)
+	headerEncoder.SetTagName("header")
+	headerEncoder.SetMode(form.ModeExplicit)
+}
+
+func EncodeQuery(v any) (url.Values, error) {
+	return queryEncoder.Encode(v)
+}
+
+func EncodeForm(v any) (url.Values, error) {
+	return formEncoder.Encode(v)
+}
+
+func EncodeHeader(v any) (http.Header, error) {
+	vals, err := formEncoder.Encode(v)
+	return http.Header(vals), err
+}
+
+func DecodeQuery(vals url.Values, v any, flags ...Flag) error {
+	if hasFlag(flags, Vacuum) {
+		vals = vacuum(vals)
+	}
+	return queryDecoder.Decode(v, vals)
+}
+
+func DecodeForm(vals url.Values, v any, flags ...Flag) error {
+	if hasFlag(flags, Vacuum) {
+		vals = vacuum(vals)
+	}
+	return formDecoder.Decode(v, vals)
+}
+
+func DecodeHeader(header http.Header, v any, flags ...Flag) error {
+	vals := url.Values(header)
+	if hasFlag(flags, Vacuum) {
+		vals = vacuum(vals)
+	}
+	return headerDecoder.Decode(v, vals)
 }
 
 func Request(r *http.Request, v any, flags ...Flag) error {
-	if err := Path(r, v, flags...); err != nil {
-		return err
+	if PathValueFunc != nil {
+		if err := Path(r, v, flags...); err != nil {
+			return err
+		}
 	}
 	if err := Header(r, v, flags...); err != nil {
 		return err
 	}
-	if r.Method == http.MethodGet || r.Method == http.MethodDelete || r.Method == http.MethodHead {
+	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodDelete {
 		return Query(r, v, flags...)
 	}
 	return Body(r, v, flags...)
 }
 
 func Query(r *http.Request, v any, flags ...Flag) error {
-	vals := r.URL.Query()
-	if hasFlag(flags, Vacuum) {
-		vals = vacuum(vals)
-	}
-	return queryDecoder.Decode(v, vals)
+	return DecodeQuery(r.URL.Query(), v, flags...)
 }
 
 func Body(r *http.Request, v any, flags ...Flag) error {
@@ -74,28 +118,20 @@ func Body(r *http.Request, v any, flags ...Flag) error {
 		return xml.NewDecoder(r.Body).Decode(v)
 	case strings.HasPrefix(ct, "application/x-www-form-urlencoded") || strings.HasPrefix(ct, "multipart/form-data"):
 		r.ParseForm()
-		vals := r.Form
-		if hasFlag(flags, Vacuum) {
-			vals = vacuum(vals)
-		}
-		return formDecoder.Decode(v, vals)
+		return DecodeForm(r.Form, v, flags...)
 	}
 	return nil
 }
 
 func Header(r *http.Request, v any, flags ...Flag) error {
-	vals := url.Values(r.Header)
-	if hasFlag(flags, Vacuum) {
-		vals = vacuum(vals)
-	}
-	return headerDecoder.Decode(v, vals)
+	return DecodeHeader(r.Header, v, flags...)
 }
 
 // TODO handle embedded structs
 // TODO make vacuum aware?
 func Path(r *http.Request, v any, flags ...Flag) error {
 	if PathValueFunc == nil {
-		return nil
+		return errors.New("PathValueFunc not set")
 	}
 
 	val := reflect.ValueOf(v)
