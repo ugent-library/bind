@@ -85,6 +85,13 @@ func DecodeHeader(header http.Header, v any, flags ...Flag) error {
 	return headerDecoder.Decode(v, vals)
 }
 
+func PathValue(r *http.Request, k string) string {
+	if PathValueFunc != nil {
+		return PathValueFunc(r, k)
+	}
+	return ""
+}
+
 func Request(r *http.Request, v any, flags ...Flag) error {
 	if PathValueFunc != nil {
 		if err := Path(r, v, flags...); err != nil {
