@@ -2,6 +2,8 @@
 package bind
 
 import (
+	"encoding/json"
+	"encoding/xml"
 	"errors"
 	"net/http"
 	"net/url"
@@ -25,8 +27,6 @@ var (
 	formDecoder   = form.NewDecoder()
 	headerDecoder = form.NewDecoder()
 
-	ErrInvalidType = errors.New("bind target must be a non-nil struct pointer")
-
 	PathValueFunc func(*http.Request, string) string
 )
 
@@ -49,7 +49,7 @@ func Request(r *http.Request, v any, flags ...Flag) error {
 	if r.Method == http.MethodGet || r.Method == http.MethodDelete || r.Method == http.MethodHead {
 		return Query(r, v, flags...)
 	}
-	return Form(r, v, flags...)
+	return Body(r, v, flags...)
 }
 
 func Query(r *http.Request, v any, flags ...Flag) error {
@@ -60,13 +60,27 @@ func Query(r *http.Request, v any, flags ...Flag) error {
 	return queryDecoder.Decode(v, vals)
 }
 
-func Form(r *http.Request, v any, flags ...Flag) error {
-	r.ParseForm()
-	vals := r.Form
-	if hasFlag(flags, Vacuum) {
-		vals = vacuum(vals)
+func Body(r *http.Request, v any, flags ...Flag) error {
+	if r.ContentLength == 0 {
+		return nil
 	}
-	return formDecoder.Decode(v, vals)
+
+	ct := r.Header.Get("Content-Type")
+
+	switch {
+	case strings.HasPrefix(ct, "application/json"):
+		return json.NewDecoder(r.Body).Decode(v)
+	case strings.HasPrefix(ct, "application/xml") || strings.HasPrefix(ct, "text/xml"):
+		return xml.NewDecoder(r.Body).Decode(v)
+	case strings.HasPrefix(ct, "application/x-www-form-urlencoded") || strings.HasPrefix(ct, "multipart/form-data"):
+		r.ParseForm()
+		vals := r.Form
+		if hasFlag(flags, Vacuum) {
+			vals = vacuum(vals)
+		}
+		return formDecoder.Decode(v, vals)
+	}
+	return nil
 }
 
 func Header(r *http.Request, v any, flags ...Flag) error {
@@ -86,11 +100,11 @@ func Path(r *http.Request, v any, flags ...Flag) error {
 
 	val := reflect.ValueOf(v)
 	if val.Kind() != reflect.Ptr || val.IsNil() {
-		return ErrInvalidType
+		return &form.InvalidDecoderError{Type: reflect.TypeOf(v)}
 	}
 	val = val.Elem()
 	if val.Kind() != reflect.Struct {
-		return ErrInvalidType
+		return nil
 	}
 
 	typ := val.Type()

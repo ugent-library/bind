@@ -24,7 +24,7 @@ func TestPath(t *testing.T) {
 	if v1.ID != "123" {
 		t.Errorf("got %q, want %q", v1.ID, "123")
 	}
-	if err := Path(r, v1); err != ErrInvalidType {
-		t.Error("Path should return ErrInvalidType unless target is a non-nil pointer to struct")
+	if err := Path(r, v1); err == nil {
+		t.Error("Path should return an error unless target is a non-nil pointer")
 	}
 }
