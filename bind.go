@@ -134,8 +134,6 @@ func Header(r *http.Request, v any, flags ...Flag) error {
 	return DecodeHeader(r.Header, v, flags...)
 }
 
-// TODO handle embedded structs
-// TODO make vacuum aware?
 func Path(r *http.Request, v any, flags ...Flag) error {
 	if PathValueFunc == nil {
 		return errors.New("PathValueFunc not set")
@@ -145,26 +143,8 @@ func Path(r *http.Request, v any, flags ...Flag) error {
 	if val.Kind() != reflect.Ptr || val.IsNil() {
 		return &form.InvalidDecoderError{Type: reflect.TypeOf(v)}
 	}
-	val = val.Elem()
-	if val.Kind() != reflect.Struct {
-		return nil
-	}
 
-	typ := val.Type()
-
-	// TODO cache this
-	for i := 0; i < typ.NumField(); i++ {
-		field := typ.Field(i)
-		pathParam := field.Tag.Get("path")
-		if pathParam != "" && pathParam != "-" {
-			value := PathValueFunc(r, pathParam)
-			if err := setWithProperType(field.Type.Kind(), value, val.Field(i)); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
+	return setPath(r, val)
 }
 
 func vacuum(values url.Values) url.Values {
@@ -193,83 +173,122 @@ func hasFlag(flags []Flag, flag Flag) bool {
 	return false
 }
 
-// code below is taken from Echo's bind implementation
-func setWithProperType(valueKind reflect.Kind, val string, structField reflect.Value) error {
-	switch valueKind {
+func setPath(r *http.Request, val reflect.Value) error {
+	if val.Kind() == reflect.Ptr {
+		if val.IsNil() {
+			return nil
+		}
+		val = val.Elem()
+	}
+	if val.Kind() != reflect.Struct {
+		return nil
+	}
+
+	t := val.Type()
+
+	// TODO cache this
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if field.Anonymous {
+			setPath(r, val.Field(i))
+			continue
+		}
+		pathParam := field.Tag.Get("path")
+		if pathParam != "" && pathParam != "-" {
+			if err := setField(field.Type.Kind(), PathValueFunc(r, pathParam), val.Field(i)); err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// code below is mostly taken from Echo's bind implementation
+func setField(kind reflect.Kind, strVal string, field reflect.Value) error {
+	switch kind {
 	case reflect.Ptr:
-		return setWithProperType(structField.Elem().Kind(), val, structField.Elem())
+		if field.IsNil() {
+			newVal := reflect.New(field.Type().Elem())
+			err := setField(newVal.Elem().Kind(), strVal, newVal.Elem())
+			if err == nil {
+				field.Set(newVal)
+			}
+			return err
+		}
+		return setField(field.Elem().Kind(), strVal, field.Elem())
 	case reflect.Int:
-		return setIntField(val, 0, structField)
+		return setIntField(strVal, 0, field)
 	case reflect.Int8:
-		return setIntField(val, 8, structField)
+		return setIntField(strVal, 8, field)
 	case reflect.Int16:
-		return setIntField(val, 16, structField)
+		return setIntField(strVal, 16, field)
 	case reflect.Int32:
-		return setIntField(val, 32, structField)
+		return setIntField(strVal, 32, field)
 	case reflect.Int64:
-		return setIntField(val, 64, structField)
+		return setIntField(strVal, 64, field)
 	case reflect.Uint:
-		return setUintField(val, 0, structField)
+		return setUintField(strVal, 0, field)
 	case reflect.Uint8:
-		return setUintField(val, 8, structField)
+		return setUintField(strVal, 8, field)
 	case reflect.Uint16:
-		return setUintField(val, 16, structField)
+		return setUintField(strVal, 16, field)
 	case reflect.Uint32:
-		return setUintField(val, 32, structField)
+		return setUintField(strVal, 32, field)
 	case reflect.Uint64:
-		return setUintField(val, 64, structField)
+		return setUintField(strVal, 64, field)
 	case reflect.Bool:
-		return setBoolField(val, structField)
+		return setBoolField(strVal, field)
 	case reflect.Float32:
-		return setFloatField(val, 32, structField)
+		return setFloatField(strVal, 32, field)
 	case reflect.Float64:
-		return setFloatField(val, 64, structField)
+		return setFloatField(strVal, 64, field)
 	case reflect.String:
-		structField.SetString(val)
+		field.SetString(strVal)
 	default:
 		return errors.New("unknown type")
 	}
 	return nil
 }
 
-func setIntField(value string, bitSize int, field reflect.Value) error {
-	if value == "" {
-		value = "0"
+func setIntField(val string, bitSize int, field reflect.Value) error {
+	if val == "" {
+		val = "0"
 	}
-	intVal, err := strconv.ParseInt(value, 10, bitSize)
+	intVal, err := strconv.ParseInt(val, 10, bitSize)
 	if err == nil {
 		field.SetInt(intVal)
 	}
 	return err
 }
 
-func setUintField(value string, bitSize int, field reflect.Value) error {
-	if value == "" {
-		value = "0"
+func setUintField(val string, bitSize int, field reflect.Value) error {
+	if val == "" {
+		val = "0"
 	}
-	uintVal, err := strconv.ParseUint(value, 10, bitSize)
+	uintVal, err := strconv.ParseUint(val, 10, bitSize)
 	if err == nil {
 		field.SetUint(uintVal)
 	}
 	return err
 }
 
-func setBoolField(value string, field reflect.Value) error {
-	if value == "" {
-		value = "false"
+func setBoolField(val string, field reflect.Value) error {
+	if val == "" {
+		val = "false"
 	}
-	boolVal, err := strconv.ParseBool(value)
+	boolVal, err := strconv.ParseBool(val)
 	if err == nil {
 		field.SetBool(boolVal)
 	}
 	return err
 }
 
-func setFloatField(value string, bitSize int, field reflect.Value) error {
-	if value == "" {
-		value = "0.0"
+func setFloatField(val string, bitSize int, field reflect.Value) error {
+	if val == "" {
+		val = "0.0"
 	}
-	floatVal, err := strconv.ParseFloat(value, bitSize)
+	floatVal, err := strconv.ParseFloat(val, bitSize)
 	if err == nil {
 		field.SetFloat(floatVal)
 	}
