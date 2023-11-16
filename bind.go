@@ -193,6 +193,7 @@ func setPath(r *http.Request, val reflect.Value) error {
 			setPath(r, val.Field(i))
 			continue
 		}
+
 		pathParam := field.Tag.Get("path")
 		if pathParam != "" && pathParam != "-" {
 			if err := setField(field.Type.Kind(), PathValueFunc(r, pathParam), val.Field(i)); err != nil {
@@ -209,6 +210,7 @@ func setField(kind reflect.Kind, strVal string, field reflect.Value) error {
 	switch kind {
 	case reflect.Ptr:
 		if field.IsNil() {
+			// TODO avoid unnecessary allocation?
 			newVal := reflect.New(field.Type().Elem())
 			err := setField(newVal.Elem().Kind(), strVal, newVal.Elem())
 			if err == nil {
@@ -246,6 +248,7 @@ func setField(kind reflect.Kind, strVal string, field reflect.Value) error {
 	case reflect.String:
 		field.SetString(strVal)
 	default:
+		// TODO return structured error with type information
 		return errors.New("unknown type")
 	}
 	return nil
