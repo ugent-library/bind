@@ -15,8 +15,9 @@ go get -u github.com/ugent-library/bind
 
 ```go
     type UserForm struct {
-        FirstName `form:"first_name" query:"first_name"`
-        LastName `form:"last_name" query:"last_name"`
+        ID        int    `path:"user_id"`
+        FirstName string `form:"first_name" query:"first_name"`
+        LastName  string `form:"last_name" query:"last_name"`
     }
 
     http.HandleFunc("/echo_name", func(w http.ResponseWriter, r *http.Request) {
@@ -24,6 +25,6 @@ go get -u github.com/ugent-library/bind
         if err := bind.Request(r, &u); err != nil {
             // handle error
         }
-        fmt.Fprintf(w, "%s %s", u.FirstName, u.LastName)
+        fmt.Fprintf(w, "%d: %s %s", u.ID, u.FirstName, u.LastName)
     })
 ```

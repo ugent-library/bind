@@ -22,6 +22,10 @@ const (
 	Vacuum Flag = iota
 )
 
+type Validator interface {
+	ValidateBind() error
+}
+
 var (
 	queryDecoder  = form.NewDecoder()
 	formDecoder   = form.NewDecoder()
@@ -98,13 +102,24 @@ func Request(r *http.Request, v any, flags ...Flag) error {
 			return err
 		}
 	}
+
 	if err := Header(r, v, flags...); err != nil {
 		return err
 	}
+
 	if r.Method == http.MethodGet || r.Method == http.MethodHead || r.Method == http.MethodDelete {
-		return Query(r, v, flags...)
+		if err := Query(r, v, flags...); err != nil {
+			return err
+		}
+	} else if err := Body(r, v, flags...); err != nil {
+		return err
 	}
-	return Body(r, v, flags...)
+
+	if validator, ok := v.(Validator); ok {
+		return validator.ValidateBind()
+	}
+
+	return nil
 }
 
 func Query(r *http.Request, v any, flags ...Flag) error {
@@ -136,7 +151,7 @@ func Header(r *http.Request, v any, flags ...Flag) error {
 
 func Path(r *http.Request, v any, flags ...Flag) error {
 	if PathValueFunc == nil {
-		return errors.New("PathValueFunc not set")
+		return errors.New("bind: PathValueFunc not set")
 	}
 
 	val := reflect.ValueOf(v)
@@ -249,7 +264,7 @@ func setField(kind reflect.Kind, strVal string, field reflect.Value) error {
 		field.SetString(strVal)
 	default:
 		// TODO return structured error with type information
-		return errors.New("unknown type")
+		return errors.New("bind: unknown type")
 	}
 	return nil
 }
